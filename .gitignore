@@ -13,5 +13,3 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
-start-backend.ps1
-start-frontend.ps1
