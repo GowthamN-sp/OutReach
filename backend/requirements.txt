@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.20
+httpx>=0.27,<1
+cryptography>=43,<47
+pydantic[email]>=2.8,<3
+openpyxl>=3.1,<4
+pdfplumber>=0.11,<1
+python-dotenv>=1,<2
+SQLAlchemy>=2.0,<2.2
+alembic>=1.14,<2
+argon2-cffi>=23.1,<26

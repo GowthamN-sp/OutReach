@@ -1,0 +1,17 @@
+backend/.env
+frontend/.env
+backend/data/
+backend/.venv*/
+backend/.verify-env/
+*.db
+*.db-*
+*.sqlite*
+backend/storage/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+start-backend.ps1
+start-frontend.ps1
