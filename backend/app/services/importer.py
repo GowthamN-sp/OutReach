@@ -43,7 +43,7 @@ def parse_import(filename, content):
                         tables.extend(
                             dict(zip(table[0], values)) for values in table[1:]
                         )
-            tabular = normalize_import(tables)
+            tabular = normalize_import(tables, keep_flagged=True)
             text = "\n".join((page.extract_text() or "") for page in pdf.pages)
         unique = list(
             dict.fromkeys(
@@ -60,7 +60,7 @@ def parse_import(filename, content):
     raise HTTPException(400, "Use .csv, .xlsx, or .pdf")
 
 
-def normalize_import(raw):
+def normalize_import(raw, keep_flagged=False):
     normalized = []
     for item in raw:
         x = {
@@ -84,7 +84,7 @@ def normalize_import(raw):
         )
         if not email:
             email = next((v for v in x.values() if valid_email(v)), "")
-        if not valid_email(email):
+        if not valid_email(email) and not keep_flagged:
             continue
         name = next(
             (
@@ -112,4 +112,4 @@ def normalize_import(raw):
                 "source": "Import",
             }
         )
-    return list({x["email"]: x for x in normalized}.values())
+    return normalized if keep_flagged else list({x["email"]: x for x in normalized}.values())

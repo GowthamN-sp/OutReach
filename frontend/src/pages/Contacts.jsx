@@ -1,11 +1,13 @@
-import { Users, Plus, Search, UploadCloud, Trash2, Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Users, Plus, Search, UploadCloud, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { time } from "../utils/format";
 import { Badge, Empty, Head, Btn, Modal } from "../components/UI";
+import useResource from "../services/useResource";
+import ResourceStatus from "../components/ResourceStatus";
+import ImportReview from "../components/ImportReview";
 import { allPages, api } from "../services/api";
 export default function Contacts({ tick, refresh, notify }) {
-  const [items, setItems] = useState(null),
-    [status, setStatus] = useState(""),
+  const [status, setStatus] = useState(""),
     [history, setHistory] = useState(null),
     [search, setSearch] = useState(""),
     [show, setShow] = useState(false),
@@ -17,16 +19,9 @@ export default function Contacts({ tick, refresh, notify }) {
       company: "",
       role: "",
     });
-  async function load() {
-    try {
-      setItems(await allPages("/contacts"));
-    } catch (e) {
-      notify(e.message, true);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, [tick]);
+  const resource = useResource("contacts", () => allPages("/contacts"), [tick]);
+  const items = resource.data;
+  const load = resource.load;
   async function save(e) {
     e.preventDefault();
     try {
@@ -60,21 +55,6 @@ export default function Contacts({ tick, refresh, notify }) {
       notify(err.message, true);
     }
     e.target.value = "";
-  }
-  async function commit() {
-    try {
-      let x = await api("/import/commit", {
-        method: "POST",
-        body: { contacts: preview.contacts },
-      });
-      notify(`${x.added} contacts imported · ${x.skipped} skipped`);
-      setImporting(false);
-      setPreview(null);
-      load();
-      refresh();
-    } catch (e) {
-      notify(e.message, true);
-    }
   }
   const filtered = (items || [])
     .filter((c) => !status || c.status === status)
@@ -134,9 +114,8 @@ export default function Contacts({ tick, refresh, notify }) {
           </select>
           <span className="results">{filtered.length} contacts</span>
         </div>
-        {items === null ? (
-          <p className="pad">Loading contacts…</p>
-        ) : filtered.length ? (
+        <ResourceStatus resource={resource} label="contacts" />
+        {filtered.length ? (
           <div className="table-scroll">
             <table>
               <thead>
@@ -228,13 +207,13 @@ export default function Contacts({ tick, refresh, notify }) {
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : items !== undefined && !resource.error && !resource.loading ? (
           <Empty
             icon={Users}
-            title="No contacts yet"
+            title={items?.length ? "No matching contacts" : "No contacts yet"}
             desc="Import a recruiter list or add contacts individually."
           />
-        )}
+        ) : null}
       </div>
       {history && (
         <Modal
@@ -289,51 +268,19 @@ export default function Contacts({ tick, refresh, notify }) {
         </Modal>
       )}
       {importing && (
-        <Modal
-          title="Review imported contacts"
+        <ImportReview
+          preview={preview}
           close={() => setImporting(false)}
-          wide
-        >
-          <p className="muted">
-            Found {preview.total} unique email addresses. PDF extraction is
-            approximate; check names and addresses before importing.
-          </p>
-          <div className="preview-list">
-            {preview.contacts.map((c, i) => (
-              <fieldset key={i} className="form-grid two">
-                <legend>Contact {i + 1}</legend>
-                {["email", "name", "company", "role"].map((k) => (
-                  <label key={k}>
-                    {k}
-                    <input
-                      value={c[k]}
-                      onChange={(e) =>
-                        setPreview((p) => ({
-                          ...p,
-                          contacts: p.contacts.map((row, j) =>
-                            j === i ? { ...row, [k]: e.target.value } : row,
-                          ),
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
-              </fieldset>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <Btn secondary onClick={() => setImporting(false)}>
-              Cancel
-            </Btn>
-            <Btn
-              icon={Check}
-              disabled={!preview.contacts.length}
-              onClick={commit}
-            >
-              Import {preview.contacts.length} contacts
-            </Btn>
-          </div>
-        </Modal>
+          done={(result) => {
+            setImporting(false);
+            setPreview(null);
+            load();
+            refresh();
+            notify(
+              `${result.added} contacts imported; ${result.skipped} skipped (already in Contacts)`,
+            );
+          }}
+        />
       )}
     </>
   );

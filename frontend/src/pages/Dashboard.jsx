@@ -7,33 +7,16 @@ import {
   AlertTriangle,
   TrendingUp,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import useResource from "../services/useResource";
+import ResourceStatus from "../components/ResourceStatus";
 import { date } from "../utils/format";
 import { Badge, Empty, Head, Btn } from "../components/UI";
 import { api } from "../services/api";
 import { Stats, SendChart } from "../components/Charts";
 import { rate } from "../components/Tracking";
-export default function Dashboard({ tick, user, navigate, notify }) {
-  const [d, setD] = useState(null);
-  const [error, setError] = useState(""),
-    [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setError("");
-    api("/analytics")
-      .then((data) => {
-        if (active) setD(data);
-      })
-      .catch((e) => {
-        if (active) {
-          setError(e.message);
-          notify(e.message, true);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [tick, retry, notify]);
+export default function Dashboard({ tick, user, navigate }) {
+  const report = useResource("analytics:", () => api("/analytics"), [tick]);
+  const d = report.data;
   return (
     <>
       <Head
@@ -46,14 +29,8 @@ export default function Dashboard({ tick, user, navigate, notify }) {
           </Btn>
         }
       />
-      {error ? (
-        <div className="panel pad" role="alert">
-          {error}{" "}
-          <button className="text-link" onClick={() => setRetry(retry + 1)}>
-            Retry
-          </button>
-        </div>
-      ) : d ? (
+      <ResourceStatus resource={report} label="overview" />
+      {d ? (
         <>
           <Stats stats={d} />
           <div className="dash-grid">
@@ -209,9 +186,7 @@ export default function Dashboard({ tick, user, navigate, notify }) {
             </div>
           )}
         </>
-      ) : (
-        <div className="panel pad">Loading analytics…</div>
-      )}
+      ) : null}
     </>
   );
 }

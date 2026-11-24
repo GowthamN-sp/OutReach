@@ -73,6 +73,11 @@ class ContactIn(Address):
 
 class ImportIn(BaseModel):
     contacts: list[ContactIn] = Field(min_length=1, max_length=1000)
+    batch: Short = "Import"
+
+
+class ImportReviewIn(BaseModel):
+    contacts: list[dict[str, str]] = Field(min_length=1, max_length=1000)
 
 
 class TemplateIn(BaseModel):

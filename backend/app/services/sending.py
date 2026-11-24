@@ -31,6 +31,20 @@ def substitute(text: str, contact: Contact, escape: bool = False) -> str:
     )
 
 
+def missing_fields(campaign, contact):
+    fields = set(
+        re.findall(r"{{(name|company|role)}}", campaign.subject + "\n" + campaign.body)
+    )
+    return sorted(field for field in fields if not getattr(contact, field).strip())
+
+
+def preview_message(campaign, contact):
+    return {
+        "subject": substitute(campaign.subject, contact),
+        "body": render(substitute(campaign.body, contact, escape=True))[0],
+    }
+
+
 def message(
     db: Session,
     delivery: Delivery,
@@ -98,14 +112,33 @@ async def send(db, uid, request):
     if not request.confirm:
         raise HTTPException(400, "Review and confirm the recipients before sending")
     campaign = owned(db, Campaign, uid, request.campaign_id)
+    if campaign.deleted_at or campaign.archived_at:
+        raise HTTPException(409, "Restore this campaign before sending")
     require_tracking_url(campaign.tracking_open, campaign.tracking_click)
     contacts = [
         owned(db, Contact, uid, cid) for cid in dict.fromkeys(request.contact_ids)
     ]
+    if any(missing_fields(campaign, contact) for contact in contacts):
+        raise HTTPException(
+            422,
+            "Some recipients have missing personalization fields. Review and fix or remove them.",
+        )
     resume = owned(db, Resume, uid, campaign.resume_id) if campaign.resume_id else None
     account = db.get(GmailAccount, uid)
     token = await google.access(account)
     lock_user(db, uid)
+    db.refresh(campaign)
+    if campaign.deleted_at or campaign.archived_at:
+        raise HTTPException(
+            409, "Campaign was removed while preparing. Restore it before sending."
+        )
+    # Contact edits may have completed during OAuth token exchange as well.
+    for contact in contacts:
+        db.refresh(contact)
+        if missing_fields(campaign, contact):
+            raise HTTPException(
+                422, "Recipient personalization changed. Review recipients again."
+            )
     pending = []
     results = []
     for contact in contacts:

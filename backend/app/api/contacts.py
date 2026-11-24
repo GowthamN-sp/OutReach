@@ -1,13 +1,15 @@
 import io
 import zipfile
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import exists, select
 from sqlalchemy.exc import IntegrityError
 
 from ..db import lock_user, owned
 from ..models import Contact, Delivery
-from ..schemas import ContactIn, ImportIn
+from ..schemas import ContactIn, ImportIn, ImportReviewIn
 from ..security import DB, Current
 from ..services.importer import normalize_import, parse_import
 
@@ -82,7 +84,7 @@ def remove(contact_id: int, auth: Current, db: DB):
 
 
 @router.post("/import/preview")
-async def preview(file: UploadFile, auth: Current):
+async def preview(file: UploadFile, auth: Current, db: DB):
     content = await file.read(7 * 1024 * 1024 + 1)
     if len(content) > 7 * 1024 * 1024:
         raise HTTPException(413, "Import files must be under 7 MB")
@@ -94,14 +96,64 @@ async def preview(file: UploadFile, auth: Current):
         raw = parse_import(file.filename or "", content)
         if len(raw) > 2000:
             raise HTTPException(400, "Split files into batches of up to 1,000 contacts")
-        records = normalize_import(raw)
+        records = normalize_import(raw, keep_flagged=True)
     except HTTPException:
         raise
     except Exception:  # noqa: BLE001 - third-party document parsers raise varied errors
         raise HTTPException(400, "Could not read this document")
     if len(records) > 1000:
         raise HTTPException(400, "Split imports into files of up to 1,000 contacts")
-    return {"contacts": records, "total": len(records)}
+    return review_records(db, auth.user_id, records) | {
+        "batch": f"Import: {(file.filename or 'contacts')[:100]} [{uuid4().hex[:8]}]",
+    }
+
+
+def review_records(db, uid, records):
+    existing = set(db.scalars(select(Contact.email).where(Contact.user_id == uid)))
+    seen = set()
+    for row in records:
+        issues = []
+        try:
+            validated = ContactIn.model_validate(row)
+            row["email"] = str(validated.email)
+        except ValidationError as exc:
+            issues.extend(
+                dict.fromkeys(
+                    "Invalid email address"
+                    if error["loc"][0] == "email"
+                    else f"Invalid {error['loc'][0]} field"
+                    for error in exc.errors()
+                )
+            )
+        if row["email"] in existing:
+            issues.append("Already in Contacts")
+        if row["email"] in seen:
+            issues.append("Duplicate within file")
+        seen.add(row["email"])
+        row["issues"] = issues
+        row["missing"] = [
+            field for field in ("name", "company", "role") if not row[field]
+        ]
+    return {
+        "contacts": records,
+        "total": len(records),
+        "existing_emails": sorted(existing),
+    }
+
+
+@router.post("/import/review")
+def review(data: ImportReviewIn, auth: Current, db: DB):
+    return review_records(
+        db,
+        auth.user_id,
+        [
+            {
+                key: row.get(key, "").strip()
+                for key in ("email", "name", "company", "role")
+            }
+            for row in data.contacts
+        ],
+    )
 
 
 @router.post("/import/commit")
@@ -114,7 +166,7 @@ def commit(data: ImportIn, auth: Current, db: DB):
                 db.add(
                     Contact(
                         user_id=auth.user_id,
-                        **(row.model_dump() | {"source": "Import"}),
+                        **(row.model_dump() | {"source": data.batch or "Import"}),
                     )
                 )
                 db.flush()

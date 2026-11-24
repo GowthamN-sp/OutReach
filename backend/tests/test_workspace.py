@@ -185,7 +185,9 @@ def test_contacts_and_imports(clients):
     rows = a.post("/api/import/preview", files={"file": ("list.csv", csv)}).json()[
         "contacts"
     ]
-    assert len(rows) == 1
+    assert len(rows) == 2
+    assert "Duplicate within file" in rows[1]["issues"]
+    rows = rows[:1]
     rows[0]["name"] = "Corrected"
     assert a.post("/api/import/commit", json={"contacts": rows}).json()["added"] == 1
     assert a.post("/api/import/commit", json={"contacts": rows}).json()["skipped"] == 1

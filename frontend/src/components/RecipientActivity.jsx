@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { allPages, api } from "../services/api";
 import { Badge, Empty } from "./UI";
 import { Pager, Signal } from "./Tracking";
 import EmailDetail from "./EmailDetail";
+import useResource from "../services/useResource";
+import ResourceStatus from "./ResourceStatus";
 import { time } from "../utils/format";
 
 export default function RecipientActivity({
@@ -11,8 +13,6 @@ export default function RecipientActivity({
   title = "Recipient activity",
   source = "sent",
 }) {
-  const [rows, setRows] = useState(null),
-    [error, setError] = useState("");
   const [filters, setFilters] = useState({
     search: "",
     status: "",
@@ -20,40 +20,26 @@ export default function RecipientActivity({
     campaign_id: "",
   });
   const [page, setPage] = useState(0),
-    [retry, setRetry] = useState(0);
-  const [campaigns, setCampaigns] = useState([]),
     [selected, setSelected] = useState(null);
-  useEffect(() => {
-    let active = true;
-    allPages("/campaigns")
-      .then((r) => {
-        if (active) setCampaigns(r);
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tick]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setRows(null);
-    setError("");
-    const query = new URLSearchParams({
-      ...filters,
-      offset: page * 25,
-      limit: 26,
-    });
-    if (campaignId) query.set("campaign_id", campaignId);
-    if (!query.get("campaign_id")) query.delete("campaign_id");
-    api(`/${source}?${query}`, { signal: controller.signal })
-      .then(setRows)
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
-      });
-    return () => controller.abort();
-  }, [filters, page, tick, retry, campaignId, source]);
+  const campaignList = useResource(
+    "campaigns:all",
+    () => allPages("/campaigns"),
+    [tick],
+  );
+  const campaigns = campaignList.data || [];
+  const query = new URLSearchParams({
+    ...filters,
+    offset: page * 25,
+    limit: 26,
+  });
+  if (campaignId) query.set("campaign_id", campaignId);
+  if (!query.get("campaign_id")) query.delete("campaign_id");
+  const resource = useResource(
+    `${source}?${query}`,
+    () => api(`/${source}?${query}`),
+    [tick],
+  );
+  const rows = resource.data;
   function filter(key, value) {
     setFilters({ ...filters, [key]: value });
     setPage(0);
@@ -114,16 +100,9 @@ export default function RecipientActivity({
           </select>
         </label>
       </div>
-      {error ? (
-        <div role="alert">
-          {error}{" "}
-          <button className="text-link" onClick={() => setRetry(retry + 1)}>
-            Retry
-          </button>
-        </div>
-      ) : !rows ? (
-        <p role="status">Loading messages…</p>
-      ) : rows.length ? (
+      <ResourceStatus resource={campaignList} label="campaign filters" />
+      <ResourceStatus resource={resource} label="messages" />
+      {rows?.length ? (
         <div className="table-scroll">
           <table>
             <thead>
@@ -184,17 +163,17 @@ export default function RecipientActivity({
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : rows && !resource.loading && !resource.error ? (
         <Empty
           title="No matching messages"
           desc="Send history and observed signals will appear here. Adjust your filters or send a reviewed campaign."
         />
-      )}
+      ) : null}
       <Pager
         page={page}
         setPage={setPage}
         more={rows?.length > 25}
-        busy={!rows}
+        busy={resource.loading}
       />
       {selected && (
         <EmailDetail

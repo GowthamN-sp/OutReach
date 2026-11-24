@@ -1,45 +1,29 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Head } from "../components/UI";
 import { allPages, api } from "../services/api";
 import { Stats, SendChart } from "../components/Charts";
 import { Pager, TrackingDisclosure } from "../components/Tracking";
 import RecipientActivity from "../components/RecipientActivity";
+import useResource from "../services/useResource";
+import ResourceStatus from "../components/ResourceStatus";
 import { time } from "../utils/format";
 
 export default function Analytics({ tick }) {
-  const [d, setD] = useState(null),
-    [error, setError] = useState("");
-  const [campaigns, setCampaigns] = useState([]),
-    [campaign, setCampaign] = useState("");
+  const [campaign, setCampaign] = useState("");
   const [search, setSearch] = useState(""),
-    [page, setPage] = useState(0),
-    [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let active = true;
-    allPages("/campaigns")
-      .then((rows) => {
-        if (active) setCampaigns(rows);
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tick, retry]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setD(null);
-    setError("");
-    api("/analytics" + (campaign ? `?campaign_id=${campaign}` : ""), {
-      signal: controller.signal,
-    })
-      .then(setD)
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
-      });
-    return () => controller.abort();
-  }, [tick, campaign, retry]);
+    [page, setPage] = useState(0);
+  const campaignList = useResource(
+    "campaigns:all",
+    () => allPages("/campaigns"),
+    [tick],
+  );
+  const campaigns = campaignList.data || [];
+  const report = useResource(
+    "analytics:" + campaign,
+    () => api("/analytics" + (campaign ? `?campaign_id=${campaign}` : "")),
+    [tick],
+  );
+  const d = report.data;
   const filtered = campaigns.filter((c) =>
     `${c.name} ${c.subject}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -50,6 +34,7 @@ export default function Analytics({ tick }) {
         title="Analytics & insights"
         desc="Gmail acceptance, optional signals and synced replies. Rates count unique messages."
       />
+      <ResourceStatus resource={campaignList} label="campaign filters" />
       <div className="panel pad analytics-filter">
         <label>
           Report scope
@@ -66,18 +51,8 @@ export default function Analytics({ tick }) {
           </select>
         </label>
       </div>
-      {error ? (
-        <div className="panel pad" role="alert">
-          {error}{" "}
-          <button className="text-link" onClick={() => setRetry(retry + 1)}>
-            Retry
-          </button>
-        </div>
-      ) : !d ? (
-        <div className="panel pad" role="status">
-          Loading analytics…
-        </div>
-      ) : (
+      <ResourceStatus resource={report} label="analytics" />
+      {d ? (
         <>
           <Stats stats={d} />
           <div className="panel chart-panel">
@@ -144,11 +119,13 @@ export default function Analytics({ tick }) {
                   </tbody>
                 </table>
               </div>
-            ) : (
+            ) : campaignList.data !== undefined &&
+              !campaignList.error &&
+              !campaignList.loading ? (
               <p className="muted">
                 No matching campaigns. Create a campaign to begin.
               </p>
-            )}
+            ) : null}
             <Pager
               page={page}
               setPage={setPage}
@@ -158,7 +135,7 @@ export default function Analytics({ tick }) {
           <RecipientActivity key={campaign} tick={tick} campaignId={campaign} />
           <TrackingDisclosure />
         </>
-      )}
+      ) : null}
     </>
   );
 }

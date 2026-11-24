@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { api } from "../services/api";
 import { Btn, Modal } from "./UI";
 import { TrackingChoices, TrackingDisclosure } from "./Tracking";
+import { attachmentWarning } from "../utils/campaign";
 const INITIAL = {
   name: "",
   subject: "",
@@ -113,7 +114,7 @@ export default function Composer({
               <option value="">No attachment</option>
               {resumes.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name}
+                  {r.name} ({r.filename})
                 </option>
               ))}
             </select>
@@ -129,6 +130,11 @@ export default function Composer({
             </a>
           )}
         </div>
+        {attachmentWarning(compose.body, compose.resume_id) && (
+          <p className="notice">
+            Your message says a resume is attached, but no file is selected.
+          </p>
+        )}
         <TrackingChoices
           value={compose}
           onChange={setCompose}

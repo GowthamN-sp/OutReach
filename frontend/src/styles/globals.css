@@ -840,6 +840,25 @@ td small {
   border-color: var(--border);
   background: var(--hover);
 }
+.campaign-open {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.campaign-card, .review-recipient { min-width: 0; overflow-wrap: anywhere; }
+.campaign-actions { position: relative; }
+.campaign-actions summary { cursor: pointer; color: var(--text); padding: 8px; }
+.action-menu { display: grid; gap: 8px; padding: 8px 0; }
+.campaign-views, .selection-tools { margin-bottom: 16px; flex-wrap: wrap; }
+.review-recipient { border-bottom: 1px solid var(--border); padding: 14px 0; }
+.review-recipient .actions { flex-wrap: wrap; }
+.review-recipient .form-grid { margin-bottom: 12px; }
+.preview-list label.option-row { flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.email-preview > label { display: grid; gap: 8px; margin-bottom: 14px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .campaign-top,
 .campaign-footer {
   display: flex;

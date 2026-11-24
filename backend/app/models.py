@@ -47,6 +47,14 @@ class GmailAccount(Base):
     refresh: Mapped[str]
 
 
+class InboxSync(Base):
+    __tablename__ = "inbox_syncs"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    occurred: Mapped[datetime] = mapped_column(default=now)
+    status: Mapped[str]
+    detail: Mapped[str]
+
+
 class Contact(Personal, Base):
     __tablename__ = "contacts"
     __table_args__ = (UniqueConstraint("user_id", "email"),)
@@ -93,6 +101,8 @@ class Campaign(Personal, Base):
     tracking_open: Mapped[bool]
     tracking_click: Mapped[bool]
     created_at: Mapped[datetime] = mapped_column(default=now)
+    archived_at: Mapped[datetime | None]
+    deleted_at: Mapped[datetime | None]
 
 
 class Delivery(Personal, Base):

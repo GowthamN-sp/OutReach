@@ -14,6 +14,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 
 from playwright.sync_api import expect, sync_playwright
+from workflow_checks import verify_workflows
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONT = ROOT / "frontend"
@@ -112,6 +113,10 @@ def run():
         stack.callback(browser.close)
         page = browser.new_page(viewport={"width": 1440, "height": 960})
         page.set_default_timeout(12000)
+        page.set_default_navigation_timeout(45000)
+        # Keep verification independent of remote font availability.
+        page.route("https://fonts.googleapis.com/**", lambda route: route.abort())
+        page.route("https://fonts.gstatic.com/**", lambda route: route.abort())
         issues = []
         page.on("pageerror", lambda e: issues.append(str(e)))
 
@@ -134,6 +139,8 @@ def run():
                 "analytics-dark-1440",
                 "sent-dark-390",
                 "email-detail-dark",
+                "recipient-review-dark",
+                "import-review-dark",
             }:
                 Path(folder).mkdir(parents=True, exist_ok=True)
                 page.screenshot(
@@ -263,7 +270,7 @@ def run():
         page.unroute("**/api/analytics")
         page.get_by_role("button", name="Retry", exact=True).click()
         expect(page.get_by_text("Open-signal rate", exact=True)).to_be_visible()
-        for width in (1440, 820, 390):
+        for width in (() if os.getenv("OD_FOCUSED") else (1440, 820, 390)):
             page.set_viewport_size({"width": width, "height": 900})
             for value in ("dark", "light"):
                 theme(value)
@@ -292,6 +299,7 @@ def run():
         expect(page.get_by_label("Click tracking", exact=True)).to_be_checked()
         audit("compose-dark")
         page.get_by_role("button", name="Close dialog").click()
+        verify_workflows(page, base, tmp / "workspace.db", uid, cid, delivery, audit)
         page.get_by_role("button", name="Log out").click()
         expect(page).to_have_url(base + "/login")
         page.locator("[name=email]").fill(email)
@@ -304,7 +312,11 @@ def run():
         ).to_be_visible()
         assert not issues, issues
         print(
-            "Passed account, navigation, keyboard theme and refresh checks. Audited 8 workspace pages in 2 themes at 3 widths, plus authentication and dialogs."
+            "Passed account, navigation, keyboard theme and refresh checks. " + (
+                "Focused workflow run; viewport matrix skipped."
+                if os.getenv("OD_FOCUSED") else
+                "Audited 8 workspace pages in 2 themes at 3 widths, plus authentication and dialogs."
+            )
         )
 
 

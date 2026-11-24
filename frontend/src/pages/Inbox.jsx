@@ -1,30 +1,35 @@
 import ThreadReply from "../components/ThreadReply";
 import { Inbox, MessageSquareText, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useResource from "../services/useResource";
+import ResourceStatus from "../components/ResourceStatus";
 import { date, time } from "../utils/format";
 import { Badge, Empty, Head, Btn } from "../components/UI";
 import { allPages, api } from "../services/api";
 export default function InboxPage({ tick, notify, boot }) {
-  const [items, setItems] = useState([]),
-    [active, setActive] = useState(null),
+  const [active, setActive] = useState(null),
     [busy, setBusy] = useState(false);
-  const load = () =>
-    allPages("/inbox")
-      .then(setItems)
-      .catch((e) => notify(e.message, true));
-  useEffect(() => {
-    load();
-  }, [tick]);
+  const [syncError, setSyncError] = useState("");
+  const syncStatus = useResource(
+    "inbox-sync-status",
+    () => api("/inbox/sync-status"),
+    [tick],
+  );
+  const resource = useResource("inbox", () => allPages("/inbox"), [tick]);
+  const items = resource.data || [];
   async function sync() {
     setBusy(true);
+    setSyncError("");
     try {
       let x = await api("/inbox/sync", { method: "POST" });
-      load();
+      resource.load();
       notify(`Synced ${x.threads_checked} threads · ${x.added} new messages`);
     } catch (e) {
+      setSyncError(e.message);
       notify(e.message, true);
     } finally {
       setBusy(false);
+      syncStatus.load();
     }
   }
   let tids = [
@@ -55,6 +60,42 @@ export default function InboxPage({ tick, notify, boot }) {
           </Btn>
         }
       />
+      <div className="panel pad" aria-label="Gmail sync status">
+        <p>
+          Gmail connection:{" "}
+          {boot.gmail_connected
+            ? `Connected (${boot.gmail_email})`
+            : "Disconnected"}
+        </p>
+        <ResourceStatus resource={syncStatus} label="latest sync status" />
+        <p
+          role={
+            syncError || syncStatus.data?.status === "failed"
+              ? "alert"
+              : "status"
+          }
+        >
+          {busy
+            ? "Syncing Gmail..."
+            : syncError
+              ? `Last sync failed: ${syncError}`
+              : syncStatus.data
+                ? `Last sync ${syncStatus.data.status} at ${time(syncStatus.data.occurred)}: ${syncStatus.data.detail}`
+                : syncStatus.data === null
+                  ? "No Gmail sync has been recorded."
+                  : ""}
+        </p>
+        {(syncError || syncStatus.data?.status === "failed") && (
+          <Btn
+            secondary
+            disabled={busy || !boot.gmail_connected}
+            onClick={sync}
+          >
+            Retry sync
+          </Btn>
+        )}
+      </div>
+      <ResourceStatus resource={resource} label="conversations" />
       <div className="inbox-layout">
         <div className="panel thread-list">
           <div className="inbox-search">
@@ -101,13 +142,15 @@ export default function InboxPage({ tick, notify, boot }) {
                 </button>
               );
             })
-          ) : (
+          ) : resource.data !== undefined &&
+            !resource.error &&
+            !resource.loading ? (
             <Empty
               icon={Inbox}
               title="No synced threads"
               desc="Send a campaign, then use Sync Gmail replies to import conversations."
             />
-          )}
+          ) : null}
         </div>
         <div className="panel thread-detail">
           {chosen ? (
@@ -167,13 +210,15 @@ export default function InboxPage({ tick, notify, boot }) {
                 sync={sync}
               />
             </>
-          ) : (
+          ) : resource.data !== undefined &&
+            !resource.error &&
+            !resource.loading ? (
             <Empty
               icon={MessageSquareText}
               title="All your conversations in one place"
               desc="Once you send messages and sync Gmail, responses will appear here."
             />
-          )}
+          ) : null}
         </div>
       </div>
     </>
